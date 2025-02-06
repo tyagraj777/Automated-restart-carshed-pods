@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: restart-crashloop
+spec:
+  schedule: "*/5 * * * *" # Run every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                crash_pods=$(kubectl get pods --field-selector=status.phase=Running -o json | \
+                             jq -r '.items[] | select(.status.containerStatuses[].state.waiting.reason=="CrashLoopBackOff") | .metadata.name');
+                for pod in $crash_pods; do
+                  echo "Detected CrashLoopBackOff in pod: $pod. Restarting...";
+                  kubectl delete pod $pod;
+                done
+          restartPolicy: OnFailure
